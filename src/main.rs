@@ -53,13 +53,10 @@ struct Update {
 }
 
 fn main() {
-    let opt = Cli::from_args();
-    run(opt);
+    run(Cli::from_args());
 }
 
 fn run(opt: Cli) {
-    let input = &opt.file;
-
     let styles = if let Some(stylesheet_path) = &opt.stylesheet {
         std::fs::read_to_string(&stylesheet_path).expect("could not read file")
     } else {
@@ -67,7 +64,7 @@ fn run(opt: Cli) {
     };
 
     let shared_styles = std::sync::Arc::new(styles);
-    let initial_html = std::sync::Arc::new(parse_file(&input));
+    let initial_html = std::sync::Arc::new(parse_file(&opt.file));
 
 
     let websocket = ws::Builder::new()
