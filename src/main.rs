@@ -53,7 +53,7 @@ fn run(input: &PathBuf) {
     thread::spawn(move || websocket.listen("127.0.0.1:3012"));
 
     std::process::Command::new("open")
-        .arg("src/index.html")
+        .arg("src/shell.html")
         .spawn()
         .unwrap();
 
