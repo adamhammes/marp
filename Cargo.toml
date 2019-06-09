@@ -1,0 +1,13 @@
+[package]
+
+name = "markdown-preview"
+version = "0.1.0"
+authors = ["Adam Hammes <adam@hammes.io>"]
+edition = "2018"
+
+[dependencies]
+
+notify = "4.0.12"
+pulldown-cmark = "0.5.2"
+structopt = "0.2.17"
+ws = "0.8.1"
