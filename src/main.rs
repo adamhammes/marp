@@ -33,7 +33,12 @@ fn serve_web_template(_req: Request<Body>) -> Response<Body> {
 struct Cli {
     #[structopt(parse(from_os_str))]
     file: PathBuf,
-    #[structopt(short = "s", long = "stylesheet", parse(from_os_str))]
+    #[structopt(
+        short = "s",
+        long = "stylesheet",
+        help = "A .css file to replace the default styles",
+        parse(from_os_str),
+    )]
     stylesheet: Option<PathBuf>,
     #[structopt(
         long = "no-open",
