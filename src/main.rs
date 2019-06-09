@@ -35,6 +35,11 @@ struct Cli {
     file: PathBuf,
     #[structopt(short = "s", long = "stylesheet", parse(from_os_str))]
     stylesheet: Option<PathBuf>,
+    #[structopt(
+        long = "no-open",
+        help = "Do not open the rendered markdown in the browser"
+    )]
+    no_open: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -99,10 +104,12 @@ fn run(opt: Cli) {
         hyper::rt::run(server);
     });
 
-    std::process::Command::new("open")
-        .arg(format!("http://{}", addr))
-        .spawn()
-        .unwrap();
+    if !&opt.no_open {
+        std::process::Command::new("open")
+            .arg(format!("http://{}", addr))
+            .spawn()
+            .unwrap();
+    }
 
     println!("Serving content at http://{}", addr);
 
