@@ -1,13 +1,14 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <script>
+    <script id="script" data-websocket-port="{{ websocketPort }}">
       window.addEventListener("DOMContentLoaded", () => {
-        console.log("here");
         const markdownContainer = document.querySelector(".markdown-container");
         const stylesContainer = document.querySelector("#js-injected-styles");
+        const websocketPort = document.querySelector("script").dataset
+          .websocketPort;
 
-        const socket = new WebSocket("ws://127.0.0.1:3012");
+        const socket = new WebSocket(`ws://127.0.0.1:${websocketPort}`);
         socket.onopen = _ => {
           socket.send("Give me markdown or give me death!");
         };

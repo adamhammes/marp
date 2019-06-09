@@ -1,11 +1,12 @@
 extern crate hyper;
+extern crate liquid;
 extern crate serde;
 extern crate structopt;
 
 
 use hyper::rt::Future;
 use hyper::service::service_fn_ok;
-use hyper::{Body, Request, Response, Server};
+use hyper::{Body, Response, Server};
 use pulldown_cmark::{html, Parser};
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -24,10 +25,6 @@ const DEFAULT_STYLES: &str = include_str!("default.css");
 
 const WEB_TEMPLATE: &str = include_str!("shell.html");
 
-fn serve_web_template(_req: Request<Body>) -> Response<Body> {
-    Response::new(Body::from(WEB_TEMPLATE))
-}
-
 #[derive(Clone, Debug, StructOpt)]
 #[structopt(name = "marp")]
 struct Cli {
@@ -37,7 +34,7 @@ struct Cli {
         short = "s",
         long = "stylesheet",
         help = "A .css file to replace the default styles",
-        parse(from_os_str),
+        parse(from_os_str)
     )]
     stylesheet: Option<PathBuf>,
     #[structopt(
@@ -45,6 +42,8 @@ struct Cli {
         help = "Do not open the rendered markdown in the browser"
     )]
     no_open: bool,
+    #[structopt(short = "p", long = "port", default_value = "8000")]
+    port: u16,
 }
 
 #[derive(Debug, Serialize)]
@@ -99,10 +98,24 @@ fn run(opt: Cli) {
 
     thread::spawn(move || websocket.listen("127.0.0.1:3012"));
 
-    let addr = ([127, 0, 0, 1], 7000).into();
+
+    let html = liquid::ParserBuilder::with_liquid()
+        .build()
+        .unwrap()
+        .parse(WEB_TEMPLATE)
+        .unwrap();
+
+    let mut template_values = liquid::value::Object::new();
+    template_values.insert("websocketPort".into(), liquid::value::Value::scalar(3012));
+    let rendered_template = std::sync::Arc::new(html.render(&template_values).unwrap());
+
+    let addr = ([127, 0, 0, 1], opt.port).into();
 
     let server = Server::bind(&addr)
-        .serve(|| service_fn_ok(serve_web_template))
+        .serve(move || {
+            let cloned = rendered_template.clone();
+            service_fn_ok(move |_| Response::new(Body::from(cloned.to_string())))
+        })
         .map_err(|e| eprintln!("server error: {}", e));
 
     thread::spawn(move || {
