@@ -7,6 +7,7 @@ edition = "2018"
 
 [dependencies]
 
+hyper = "0.12"
 notify = "4.0.12"
 pulldown-cmark = "0.5.2"
 serde = { version = "1.0.92", features = ["derive"] }

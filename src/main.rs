@@ -1,6 +1,11 @@
+extern crate hyper;
 extern crate serde;
 extern crate structopt;
 
+
+use hyper::rt::Future;
+use hyper::service::service_fn_ok;
+use hyper::{Body, Request, Response, Server};
 use pulldown_cmark::{html, Parser};
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -16,6 +21,12 @@ use ws::Sender;
 use structopt::StructOpt;
 
 const DEFAULT_STYLES: &str = include_str!("default.css");
+
+const WEB_TEMPLATE: &str = include_str!("shell.html");
+
+fn serve_web_template(_req: Request<Body>) -> Response<Body> {
+    Response::new(Body::from(WEB_TEMPLATE))
+}
 
 #[derive(Clone, Debug, StructOpt)]
 #[structopt(name = "marp")]
@@ -39,7 +50,6 @@ fn main() {
 
 fn run(opt: Cli) {
     let input = &opt.file;
-
 
     let styles = if let Some(stylesheet_path) = &opt.stylesheet {
         std::fs::read_to_string(&stylesheet_path).expect("could not read file")
@@ -79,10 +89,22 @@ fn run(opt: Cli) {
 
     thread::spawn(move || websocket.listen("127.0.0.1:3012"));
 
+    let addr = ([127, 0, 0, 1], 7000).into();
+
+    let server = Server::bind(&addr)
+        .serve(|| service_fn_ok(serve_web_template))
+        .map_err(|e| eprintln!("server error: {}", e));
+
+    thread::spawn(move || {
+        hyper::rt::run(server);
+    });
+
     std::process::Command::new("open")
-        .arg("src/shell.html")
+        .arg(format!("http://{}", addr))
         .spawn()
         .unwrap();
+
+    println!("Serving content at http://{}", addr);
 
     parser_thread.join().unwrap();
 }
