@@ -1,3 +1,4 @@
+extern crate serde;
 extern crate structopt;
 
 use pulldown_cmark::{html, Parser};
@@ -6,6 +7,8 @@ use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
 use std::thread;
 
+use serde::Serialize;
+
 use notify::{watcher, DebouncedEvent, RecursiveMode, Watcher};
 use std::time::Duration;
 
@@ -13,11 +16,19 @@ use ws::Sender;
 
 use structopt::StructOpt;
 
+const DEFAULT_STYLES: &str = include_str!("default.css");
+
 #[derive(Debug, StructOpt)]
 #[structopt(name = "marp")]
 struct Cli {
     #[structopt(parse(from_os_str))]
     file: PathBuf,
+}
+
+#[derive(Debug, Serialize)]
+struct Update {
+    stylesheet: Option<String>,
+    content: Option<String>,
 }
 
 fn main() {
@@ -38,7 +49,14 @@ fn run(input: &PathBuf) {
             let cloned = initial_html.clone();
 
             move |_| {
-                out.send(ws::Message::text(cloned.to_string())).unwrap();
+                let initial_message = Update {
+                    content: Some(cloned.to_string()),
+                    stylesheet: Some(DEFAULT_STYLES.to_string()),
+                };
+
+                let serialized = serde_json::to_string(&initial_message).unwrap();
+                out.send(ws::Message::text(serialized.to_string())).unwrap();
+                println!("Connection established");
                 Ok(())
             }
         })
@@ -64,7 +82,12 @@ fn print_html(receiver: Receiver<DebouncedEvent>, output: Sender) {
     loop {
         if let Ok(DebouncedEvent::Write(path)) = receiver.recv() {
             let markdown = parse_file(&path).to_string();
-            output.send(markdown).unwrap();
+            let update = Update {
+                content: Some(markdown),
+                stylesheet: None,
+            };
+            let serialized = serde_json::to_string(&update).unwrap();
+            output.send(serialized).unwrap();
         }
     }
 }
