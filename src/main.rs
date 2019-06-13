@@ -57,10 +57,9 @@ fn main() {
 }
 
 fn run(opt: Cli) {
-    let styles = if let Some(stylesheet_path) = &opt.stylesheet {
-        std::fs::read_to_string(&stylesheet_path).expect("could not read file")
-    } else {
-        DEFAULT_STYLES.to_string()
+    let styles = match &opt.stylesheet {
+        Some(path) => std::fs::read_to_string(&path).expect("could not read file"),
+        None => DEFAULT_STYLES.to_string(),
     };
 
     let shared_styles = std::sync::Arc::new(styles);
