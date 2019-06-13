@@ -74,15 +74,7 @@ fn run(opt: Cli) {
 
     thread::spawn(move || websocket.listen("127.0.0.1:3012"));
 
-    let html = liquid::ParserBuilder::with_liquid()
-        .build()
-        .unwrap()
-        .parse(WEB_TEMPLATE)
-        .unwrap();
-
-    let mut template_values = liquid::value::Object::new();
-    template_values.insert("websocketPort".into(), liquid::value::Value::scalar(3012));
-    let rendered_template = std::sync::Arc::new(html.render(&template_values).unwrap());
+    let rendered_template = std::sync::Arc::new(render_web_template());
 
     let addr = ([127, 0, 0, 1], opt.port).into();
 
@@ -131,6 +123,18 @@ fn build_websocket(
             }
         })
         .unwrap()
+}
+
+fn render_web_template() -> String {
+    let html = liquid::ParserBuilder::with_liquid()
+        .build()
+        .unwrap()
+        .parse(WEB_TEMPLATE)
+        .unwrap();
+
+    let mut template_values = liquid::value::Object::new();
+    template_values.insert("websocketPort".into(), liquid::value::Value::scalar(3012));
+    html.render(&template_values).unwrap()
 }
 
 fn watch_and_parse(config: &Cli, output: Sender) {
