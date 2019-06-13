@@ -57,17 +57,14 @@ fn main() {
 }
 
 fn run(opt: Cli) {
-    let styles = match &opt.stylesheet {
+    let styles = Arc::new(match &opt.stylesheet {
         Some(path) => std::fs::read_to_string(&path).expect("could not read file"),
         None => DEFAULT_STYLES.to_string(),
-    };
+    });
 
-    let shared_styles = std::sync::Arc::new(styles);
-    let initial_html = std::sync::Arc::new(parse_file(&opt.file));
+    let initial_html = Arc::new(parse_file(&opt.file));
 
-
-    let websocket = build_websocket(initial_html, shared_styles);
-
+    let websocket = build_websocket(initial_html, styles);
     let broadcaster = websocket.broadcaster();
 
     let cli = opt.clone();
