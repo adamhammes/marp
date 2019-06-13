@@ -90,10 +90,7 @@ fn run(opt: Cli) {
     });
 
     if !&opt.no_open {
-        std::process::Command::new("open")
-            .arg(format!("http://{}", addr))
-            .spawn()
-            .unwrap();
+        open_page(&addr);
     }
 
     println!("Serving content at http://{}", addr);
@@ -135,6 +132,13 @@ fn render_web_template() -> String {
     let mut template_values = liquid::value::Object::new();
     template_values.insert("websocketPort".into(), liquid::value::Value::scalar(3012));
     html.render(&template_values).unwrap()
+}
+
+fn open_page(addr: &std::net::SocketAddr) {
+    std::process::Command::new("open")
+        .arg(format!("http://{}", addr))
+        .spawn()
+        .unwrap();
 }
 
 fn watch_and_parse(config: &Cli, output: Sender) {
