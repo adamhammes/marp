@@ -9,7 +9,7 @@ use hyper::service::service_fn_ok;
 use hyper::{Body, Response, Server};
 use pulldown_cmark::{html, Parser};
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 use std::thread;
 
 use serde::Serialize;
@@ -67,24 +67,7 @@ fn run(opt: Cli) {
     let initial_html = std::sync::Arc::new(parse_file(&opt.file));
 
 
-    let websocket = ws::Builder::new()
-        .build(move |out: ws::Sender| {
-            let cloned_content = initial_html.clone();
-            let cloned_styles = shared_styles.clone();
-
-            move |_| {
-                let initial_message = Update {
-                    content: Some(cloned_content.to_string()),
-                    stylesheet: Some(cloned_styles.to_string()),
-                };
-
-                let serialized = serde_json::to_string(&initial_message).unwrap();
-                out.send(ws::Message::text(serialized.to_string())).unwrap();
-                println!("Connection established");
-                Ok(())
-            }
-        })
-        .unwrap();
+    let websocket = build_websocket(initial_html, shared_styles);
 
     let broadcaster = websocket.broadcaster();
 
@@ -94,7 +77,6 @@ fn run(opt: Cli) {
     });
 
     thread::spawn(move || websocket.listen("127.0.0.1:3012"));
-
 
     let html = liquid::ParserBuilder::with_liquid()
         .build()
@@ -129,6 +111,30 @@ fn run(opt: Cli) {
     println!("Serving content at http://{}", addr);
 
     parser_thread.join().unwrap();
+}
+
+fn build_websocket(
+    content: Arc<String>,
+    styles: Arc<String>,
+) -> ws::WebSocket<impl ws::Factory<Handler = impl ws::Handler>> {
+    ws::Builder::new()
+        .build(move |out: ws::Sender| {
+            let cloned_content = content.clone();
+            let cloned_styles = styles.clone();
+
+            move |_| {
+                let initial_message = Update {
+                    content: Some(cloned_content.to_string()),
+                    stylesheet: Some(cloned_styles.to_string()),
+                };
+
+                let serialized = serde_json::to_string(&initial_message).unwrap();
+                out.send(ws::Message::text(serialized.to_string())).unwrap();
+                println!("Connection established");
+                Ok(())
+            }
+        })
+        .unwrap()
 }
 
 fn watch_and_parse(config: &Cli, output: Sender) {
