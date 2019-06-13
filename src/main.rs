@@ -9,8 +9,6 @@ use hyper::service::service_fn_ok;
 use hyper::{Body, Response, Server};
 use pulldown_cmark::{html, Parser};
 use std::path::PathBuf;
-use std::sync::{mpsc, Arc};
-use std::thread;
 
 use serde::Serialize;
 
@@ -57,27 +55,19 @@ fn main() {
 }
 
 fn run(opt: Cli) {
-    let styles = Arc::new(match &opt.stylesheet {
+    let styles = match &opt.stylesheet {
         Some(path) => std::fs::read_to_string(&path).expect("could not read file"),
         None => DEFAULT_STYLES.to_string(),
-    });
+    };
 
-    let initial_html = Arc::new(parse_file(&opt.file));
+    let initial_html = parse_file(&opt.file);
 
     let websocket = build_websocket(initial_html, styles);
     let broadcaster = websocket.broadcaster();
 
-    let cli = opt.clone();
-    let parser_thread = thread::spawn(move || {
-        watch_and_parse(&cli, broadcaster);
-    });
-
-    thread::spawn(move || websocket.listen("127.0.0.1:3012"));
-
     let rendered_template = std::sync::Arc::new(render_web_template());
 
     let addr = ([127, 0, 0, 1], opt.port).into();
-
     let server = Server::bind(&addr)
         .serve(move || {
             let cloned = rendered_template.clone();
@@ -85,22 +75,24 @@ fn run(opt: Cli) {
         })
         .map_err(|e| eprintln!("server error: {}", e));
 
-    thread::spawn(move || {
-        hyper::rt::run(server);
-    });
+    let open = !&opt.no_open;
+    crossbeam::scope(|scope| {
+        scope.spawn(move |_| watch_and_parse(&opt, broadcaster));
+        scope.spawn(move |_| websocket.listen("127.0.0.1:3012"));
+        scope.spawn(move |_| hyper::rt::run(server));
 
-    if !&opt.no_open {
-        open_page(&addr);
-    }
+        println!("Serving content at http://{}", addr);
 
-    println!("Serving content at http://{}", addr);
-
-    parser_thread.join().unwrap();
+        if open {
+            open_page(&addr);
+        }
+    })
+    .unwrap();
 }
 
 fn build_websocket(
-    content: Arc<String>,
-    styles: Arc<String>,
+    content: String,
+    styles: String,
 ) -> ws::WebSocket<impl ws::Factory<Handler = impl ws::Handler>> {
     ws::Builder::new()
         .build(move |out: ws::Sender| {
@@ -142,7 +134,7 @@ fn open_page(addr: &std::net::SocketAddr) {
 }
 
 fn watch_and_parse(config: &Cli, output: Sender) {
-    let (sender, receiver) = mpsc::channel();
+    let (sender, receiver) = std::sync::mpsc::channel();
 
     let mut watcher = watcher(sender, Duration::from_millis(30)).unwrap();
     watcher
