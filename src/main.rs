@@ -1,26 +1,18 @@
-extern crate hyper;
 extern crate liquid;
 extern crate serde;
 extern crate structopt;
 
-
-use hyper::rt::Future;
-use hyper::service::service_fn_ok;
-use hyper::{Body, Response, Server};
 use pulldown_cmark::{html, Parser};
+use rouille::Response;
 use std::path::PathBuf;
 
 use serde::Serialize;
 
 use notify::{watcher, DebouncedEvent, RecursiveMode, Watcher};
-use std::time::Duration;
-
-use ws::Sender;
 
 use structopt::StructOpt;
 
 const DEFAULT_STYLES: &str = include_str!("default.css");
-
 const WEB_TEMPLATE: &str = include_str!("shell.html");
 
 #[derive(Clone, Debug, StructOpt)]
@@ -68,18 +60,21 @@ fn run(opt: Cli) {
     let rendered_template = std::sync::Arc::new(render_web_template());
 
     let addr = ([127, 0, 0, 1], opt.port).into();
-    let server = Server::bind(&addr)
-        .serve(move || {
-            let cloned = rendered_template.clone();
-            service_fn_ok(move |_| Response::new(Body::from(cloned.to_string())))
-        })
-        .map_err(|e| eprintln!("server error: {}", e));
 
     let open = !&opt.no_open;
+    let shared_options = std::sync::Arc::new(opt);
     crossbeam::scope(|scope| {
-        scope.spawn(move |_| watch_and_parse(&opt, broadcaster));
+        let c1 = shared_options.clone();
+        scope.spawn(move |_| watch_and_parse(&c1, broadcaster));
         scope.spawn(move |_| websocket.listen("127.0.0.1:3012"));
-        scope.spawn(move |_| hyper::rt::run(server));
+
+        scope.spawn(move |_| {
+            start_server(
+                &shared_options.clone(),
+                rendered_template.as_str().to_owned(),
+                &addr,
+            )
+        });
 
         println!("Serving content at http://{}", addr);
 
@@ -88,6 +83,35 @@ fn run(opt: Cli) {
         }
     })
     .unwrap();
+}
+
+fn start_server(cli: &Cli, fallback: String, addr: &std::net::SocketAddr) {
+    let mut path = cli.file.to_owned();
+    path.pop();
+
+    let shared_fallback = std::sync::Arc::new(fallback);
+    let root_directory = std::sync::Arc::new(path.to_string_lossy().into_owned());
+
+    rouille::start_server(addr.to_string(), move |request| {
+        {
+            let response = rouille::match_assets(&request, root_directory.as_str());
+            if response.is_success() {
+                return response;
+            }
+        }
+
+        let uri = request.url().parse::<http::Uri>().unwrap();
+
+        if uri.path() == "/" {
+            return Response::html(shared_fallback.as_str());
+        }
+
+        Response::html(
+            "404 error. Try <a href=\"/README.md\"`>README.md</a> or \
+             <a href=\"/src/lib.rs\">src/lib.rs</a> for example.",
+        )
+        .with_status_code(404)
+    });
 }
 
 fn build_websocket(
@@ -133,10 +157,11 @@ fn open_page(addr: &std::net::SocketAddr) {
         .unwrap();
 }
 
-fn watch_and_parse(config: &Cli, output: Sender) {
+fn watch_and_parse(config: &Cli, output: ws::Sender) {
     let (sender, receiver) = std::sync::mpsc::channel();
 
-    let mut watcher = watcher(sender, Duration::from_millis(30)).unwrap();
+    let debounce_duration = std::time::Duration::from_millis(30);
+    let mut watcher = watcher(sender, debounce_duration).unwrap();
     watcher
         .watch(&config.file, RecursiveMode::NonRecursive)
         .unwrap();
