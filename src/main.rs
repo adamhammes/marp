@@ -179,23 +179,29 @@ fn watch_and_parse(config: &Cli, output: ws::Sender) {
         .map(|p| std::fs::canonicalize(p).unwrap());
 
     loop {
-        if let Ok(DebouncedEvent::Write(path)) = receiver.recv() {
-            let (content, stylesheet) = if path == canonical_content_path {
-                (Some(parse_file(&path).to_string()), None)
-            } else if Some(&path) == canonical_stylesheet_path.as_ref() {
-                let styles = std::fs::read_to_string(&path).expect("could not read file");
-                (None, Some(styles))
-            } else {
-                unreachable!();
-            };
+        let event = receiver.recv();
+        match event {
+            Ok(DebouncedEvent::Write(path)) | Ok(DebouncedEvent::Create(path)) => {
+                let (content, stylesheet) = if path == canonical_content_path {
+                    (Some(parse_file(&path).to_string()), None)
+                } else if Some(&path) == canonical_stylesheet_path.as_ref() {
+                    let styles = std::fs::read_to_string(&path).expect("could not read file");
+                    (None, Some(styles))
+                } else {
+                    unreachable!();
+                };
 
-            let update = Update {
-                content,
-                stylesheet,
-            };
+                let update = Update {
+                    content,
+                    stylesheet,
+                };
 
-            let serialized = serde_json::to_string(&update).unwrap();
-            output.send(serialized).unwrap();
+                let serialized = serde_json::to_string(&update).unwrap();
+                output.send(serialized).unwrap();
+            }
+            _ => {
+                println!("{:?}", event);
+            }
         }
     }
 }
